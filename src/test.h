@@ -1,0 +1,8 @@
+//
+// Created by Ньургун Макаров on 22.01.2022.
+//
+
+#ifndef ASSIGNMENT_MEMORY_ALLOCATOR_TEST_H
+#define ASSIGNMENT_MEMORY_ALLOCATOR_TEST_H
+
+#endif //ASSIGNMENT_MEMORY_ALLOCATOR_TEST_H
