@@ -12,6 +12,8 @@
 #include "mem.h"
 #include "util.h"
 
+static const void *HEAP_START = NULL;
+
 void debug_block(struct block_header *b, const char *fmt, ...);
 
 void debug(const char *fmt, ...);
@@ -50,7 +52,8 @@ static void *map_pages(void const *addr, size_t length, int additional_flags) {
 static struct region alloc_region(void const *addr, size_t query) {
     bool status = true;
     query = region_actual_size(query);
-    void *reg_adr = map_pages(addr, query, 0);
+    void *reg_adr = map_pages(START_HEAP, query, 0);
+    if (HEAP_START == NULL) HEAP_START = reg_adr;
     if (reg_adr == MAP_FAILED || reg_adr == NULL) {
         status = false;
         reg_adr = map_pages(addr, query, 0);
@@ -61,7 +64,6 @@ static struct region alloc_region(void const *addr, size_t query) {
     const struct region new_region = {.addr = reg_adr, .size = query, .extends = status};
     block_init(reg_adr, (block_size) {.bytes = query}, NULL);
     return new_region;
-
 }
 
 static void *block_after(struct block_header const *block);
@@ -81,13 +83,20 @@ static bool block_splittable(struct block_header *restrict block, size_t query) 
            query + offsetof(struct block_header, contents) + BLOCK_MIN_CAPACITY <= block->capacity.bytes;
 }
 
+static void *split_block_addr(struct block_header *restrict block, block_size new_size) {
+    return (void *) ((uint8_t *) block + new_size.bytes);
+}
+
+
 static bool split_if_too_big(struct block_header *block, size_t query) {
     const size_t capacity_query = size_max(BLOCK_MIN_CAPACITY, query);
     if (block_splittable(block, capacity_query)) {
         const block_capacity occupied_block_capacity = {query + offsetof(struct block_header, contents)};
         const block_size remaining_space = {size_from_capacity(block->capacity).bytes - occupied_block_capacity.bytes};
 
-        struct block_header *const next_block_header = block_after(block);
+        void *next_block_header = split_block_addr(block, remaining_space);
+
+
         block_init(next_block_header, remaining_space, block->next);
         block->next = next_block_header;
         return true;
@@ -149,9 +158,12 @@ static struct block_search_result find_good_or_last(struct block_header *restric
 /*  Попробовать выделить память в куче начиная с блока `block` не пытаясь расширить кучу
  Можно переиспользовать как только кучу расширили. */
 static struct block_search_result try_memalloc_existing(size_t query, struct block_header *block) {
+
     const struct block_search_result result = find_good_or_last(block, query);
+
     if (result.type == BSR_FOUND_GOOD_BLOCK)
         split_if_too_big(block, query);
+
     return result;
 }
 
@@ -185,8 +197,8 @@ static struct block_header *memalloc(size_t query, struct block_header *heap_sta
 
 }
 
-void *_malloc(size_t query) {
-    struct block_header *const addr = memalloc(query, (struct block_header *) HEAP_START);
+void *_malloc(size_t query, void *heap) {
+    struct block_header *const addr = memalloc(query, heap);
     if (addr) return addr->contents;
     else return NULL;
 }
