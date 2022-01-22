@@ -49,17 +49,17 @@ static void *map_pages(void const *addr, size_t length, int additional_flags) {
 /*  аллоцировать регион памяти и инициализировать его блоком */
 static struct region alloc_region(void const *addr, size_t query) {
     bool status = true;
-    const size_t region_size = region_actual_size(offsetof(struct block_header, contents));
-    void *reg_adr = map_pages(addr, region_size, 0);
+    query = region_actual_size(query);
+    void *reg_adr = map_pages(addr, query, 0);
     if (reg_adr == MAP_FAILED || reg_adr == NULL) {
         status = false;
-        reg_adr = map_pages(addr, region_size, 0);
+        reg_adr = map_pages(addr, query, 0);
         if (reg_adr == MAP_FAILED || reg_adr == NULL) {
             return REGION_INVALID;
         }
     }
-    const struct region new_region = {.addr = reg_adr, .size = region_size, .extends = status};
-    block_init(reg_adr, (block_size) {.bytes = region_size}, NULL);
+    const struct region new_region = {.addr = reg_adr, .size = query, .extends = status};
+    block_init(reg_adr, (block_size) {.bytes = query}, NULL);
     return new_region;
 
 }
@@ -132,18 +132,18 @@ struct block_search_result {
 
 
 static struct block_search_result find_good_or_last(struct block_header *restrict block, size_t sz) {
-    while (try_merge_with_next(block)) {
-        //if the block is good, return it
-        if (block->is_free && block_is_big_enough(sz, block))
-            return (struct block_search_result) {.type = BSR_FOUND_GOOD_BLOCK, .block = block};
+    while (try_merge_with_next(block));
+    //if the block is good, return it
+    if (block->is_free && block_is_big_enough(sz, block))
+        return (struct block_search_result) {.type = BSR_FOUND_GOOD_BLOCK, .block = block};
 
-        //if block is not the last one, go to the next one
-        //else return it
-        if (block->next != NULL)
-            find_good_or_last(block->next, sz);
-        else
-            return (struct block_search_result) {.type = BSR_REACHED_END_NOT_FOUND, .block = block};
-    }
+    //if block is not the last one, go to the next one
+    //else return it
+    if (block->next != NULL)
+        return find_good_or_last(block->next, sz);
+    else
+        return (struct block_search_result) {.type = BSR_REACHED_END_NOT_FOUND, .block = block};
+
 }
 
 /*  Попробовать выделить память в куче начиная с блока `block` не пытаясь расширить кучу
